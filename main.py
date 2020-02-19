@@ -11,7 +11,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from scipy.integrate import solve_ivp
+from scipy.integrate import RK45
 
 plt.style.use('bmh')
 
@@ -54,13 +54,6 @@ x = np.linspace(-2, 2, 100)
 y = np.linspace(-2, 2, 100)
 z = np.linspace(-2, 2, 100)
 
-# fig = plt.figure()
-# ax = fig.gca(projection='3d')
-# xx,yy,zz = np.meshgrid(x,y,z)
-# Bx,By,Bz = B(xx,yy,zz)
-# ax.quiver(xx,yy,zz,Bx,By,Bz, normalize=True, length=0.2)
-# plt.show()
-
 if PLOT_FIELD:
     # xy plane
     xx, zz = np.meshgrid(x, z)
@@ -80,87 +73,100 @@ if PLOT_FIELD:
     plt.ylabel("$y$")
     plt.show()
 
+### Rk45 stuff ###
 
-## Simulate particles ##
+def f(t, y):
+    # y = [x, y, z, vx, vy, vz]
+    cross = np.cross(y[3:], B(*y[:3]))
+    return np.concatenate((y[3:], cross))
 
-def F(vx, vy, vz, Bx, By, Bz):
-    Fx = vy*Bz - vz*By
-    Fy = vz*Bx - vx*Bz
-    Fz = vx*By - vy*Bx
+def get_path(x=-20, y=0, z=0, vx=0.1, vy=0, vz=0,
+             max_step=10000, return_iter=False, return_vel=False):
+    max_step = 10000
+    y_list = np.empty([max_step, 6])
+    t_list = np.empty(max_step)
+    t_list[0] = 0
+    y_list[0] = [x, y, z, vx, vy, vz]
+    solver = RK45(f, 0, y_list[0], 100, max_step=max_step)
+    i = 1
 
-    return Fx, Fy, Fz
+    while solver.status == "running":
+        solver.step()
+        y_list[i] = solver.y
+        t_list[i] = solver.t
+        i += 1
+    i_end = i
 
-def RK4(y, h):
-    """Time-independent RHS assumed"""
-    # y = np.array([x, y, z], [vx, vy, vz])
-    def f(y):
-        return np.array([
-            y[1],
-            np.cross(y[1], B(*y[0]))
-        ])
-    k1 = f(y)
-    k2 = f(y + k1/2)
-    k3 = f(y + k2/2)
-    k4 = f(y + k3)
+    x = y_list[:i_end, 0]
+    y = y_list[:i_end, 1]
+    z = y_list[:i_end, 2]
+    vx = y_list[:i_end, 3]
+    vy = y_list[:i_end, 4]
+    vz = y_list[:i_end, 5]
 
-    y_next = y + (k1 + 2*k2 + 2*k3 + k4)*h/6
-    return y_next
+    if return_vel:
+        return x, y, z, vx, vy, vz
 
-x = -20
-y = 10
-z = 0
-vx = 0.1
-vy = 0
-vz = 0
+    if return_iter:
+        return x, y, z, i_end-1
 
-end_time = 100000
-step = 0.005
+    return x, y, z,
 
-y_list = np.empty([end_time, 2, 3])
-y_list[0] = np.array([[x, y, z], [vx, vy, vz]])
+x = []
+y = []
+z = []
+vals = [(5, 0.4), (0, 1), (-4, 0.4)]
+for i, (z_0, vz_0) in enumerate(vals):
+    xi, yi, zi = get_path(z=z_0, vx=vz_0)
+    x.append(xi)
+    y.append(yi)
+    z.append(zi)
 
-# RK4
-for i in range(1, end_time):
-    y_list[i] = RK4(y_list[i-1], step)
 
-# x_list, y_list, z_list = [], [], []
-# for i in range(end_time):
-#     x_list.append(x)
-#     y_list.append(y)
-#     z_list.append(z)
-#     Bx, By, Bz = B(x, y, z)
-#     Fx, Fy, Fz = F(vx, vy, vz, Bx, By, Bz)
-#     x += vx*step
-#     y += vy*step
-#     x += vz*step
-#     vx += Fx*step  # Yes, we just ignore mass
-#     vy += Fy*step
-#     vz += Fz*step
+# xz plane ####
+plt.title("XZ plane")
+for i in range(len(vals)):
+    plt.plot(x[i], z[i], label=f"$vz_0: {vals[i][1]}$, $v_0: {vals[i][0]}$")
+plt.axvline(0, c="gray")
+ax_line = lambda x: -x/np.tan(ecliptic_tilt)  # ecliptic axis
+plt.plot([-10, 10], [ax_line(-10), ax_line(10)], linestyle="--", color="gray")  # ecliptic axis
+plt.scatter([0], [0], s=3000, zorder=10)  # earth
 
-x = y_list[:,0,0]
-y = y_list[:,0,1]
-z = y_list[:,0,2]
+# B-field
+x_lin = np.linspace(-10, 10, 100)
+z_lin = np.linspace(-10, 10, 100)
+xx, zz = np.meshgrid(x_lin, z_lin)
+Bx, By, Bz = B(xx, np.zeros_like(xx), zz)
+stream = plt.streamplot(xx, zz, Bx, Bz, color="gray", linewidth=0.5)
 
-plt.plot(x,z)
-plt.show()
-plt.plot(x,y)
-plt.show()
-
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.scatter(y_list[0, 0, 0], y_list[0, 0, 1], y_list[0, 0, 2], label="Start", marker="x")
-ax.scatter(y_list[-1, 0, 0], y_list[-1, 0, 1], y_list[-1, 0, 2], label="End", marker="o")
-ax.plot(y_list[:, 0, 0], y_list[:, 0, 1], y_list[:, 0, 2])
-
-ax.set_xlabel("X")
-ax.set_ylabel("Y")
-ax.set_zlabel("Z")
-ax.legend()
+#plt.gca().set_aspect('equal', adjustable='box')
+plt.xlabel("x")
+plt.ylabel("z")
+plt.legend()
+plt.xlim(-20, 12)
+plt.ylim(-20, 14)
 plt.show()
 
-# Plot energy
-E = np.sum(y_list[:, 1, :]**2, axis=1)
-print(np.max(E), np.min(E))
-plt.plot(np.arange(end_time)*step, E)
+# xy plane #####
+plt.title("XY plane")
+for i in range(len(vals)):
+    plt.plot(x[i], y[i], label=f"$vz_0: {vals[i][1]}$, $v_0: {vals[i][0]}$")
+plt.scatter([0], [0], s=3000, zorder=10)  # earth
+
+plt.axhline(color="gray")
+#plt.gca().set_aspect('equal', adjustable='box')
+plt.xlabel("x")
+plt.ylabel("y")
+plt.legend()
+plt.xlim(-20, 12)
+plt.ylim(-20, 14)
 plt.show()
 
+## Energy validation
+x, y, z, vx, vy, vz = get_path(5, 0.4, return_vel=True)
+E = vx**2 + vy**2 + vz**2
+plt.title("Energy")
+plt.plot(100*(E-E[0])/E[0])
+plt.ylabel("Relative error [%]")
+plt.xlabel("Step number")
+plt.show()
