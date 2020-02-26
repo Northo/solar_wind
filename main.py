@@ -17,7 +17,7 @@ plt.style.use('bmh')
 
 newParams = {'figure.figsize'  : (12, 6),  # Figure size
              'figure.dpi'      : 200,      # figure resolution
-             'axes.titlesize'  : 20,       # fontsize of title
+             'axes.titlesize'  : 30,       # fontsize of title
              'axes.labelsize'  : 11,       # fontsize of axes labels
              'axes.linewidth'  : 2,        # width of the figure box lines
              'lines.linewidth' : 1,        # width of the plotted lines
@@ -34,7 +34,8 @@ plt.rcParams.update(newParams) # Set new plotting parameters
 ecliptic_tilt = 23.4  # degrees
 ecliptic_tilt = np.radians(ecliptic_tilt)
 
-PLOT_FIELD = False
+PLOT_FIELD = True
+SAVE_FIG = True
 
 def B(x,y,z):
     r = np.maximum(np.sqrt(x**2 + y**2 + z**2), 0.01)
@@ -62,7 +63,11 @@ if PLOT_FIELD:
     plt.title("$xz$-plane")
     plt.xlabel("$x$")
     plt.ylabel("$z$")
-    plt.show()
+    if SAVE_FIG:
+        plt.savefig("B_field_xz_plane.pdf")
+        plt.clf()
+    else:
+        plt.show()
 
     # xy plane
     xx, yy = np.meshgrid(x, y)
@@ -71,7 +76,11 @@ if PLOT_FIELD:
     plt.title("$xy$-plane")
     plt.xlabel("$x$")
     plt.ylabel("$y$")
-    plt.show()
+    if SAVE_FIG:
+        plt.savefig("B_field_xy_plane.pdf")
+        plt.clf()
+    else:
+        plt.show()
 
 ### Rk45 stuff ###
 
@@ -115,7 +124,7 @@ def get_path(x=-20, y=0, z=0, vx=0.1, vy=0, vz=0,
 x = []
 y = []
 z = []
-vals = [(5, 0.4), (0, 1), (-4, 0.4)]
+vals = [(7, 0.4), (5, 0.4), (0, 1), (-4, 0.4)]
 for i, (z_0, vz_0) in enumerate(vals):
     xi, yi, zi = get_path(z=z_0, vx=vz_0)
     x.append(xi)
@@ -126,7 +135,7 @@ for i, (z_0, vz_0) in enumerate(vals):
 # xz plane ####
 plt.title("XZ plane")
 for i in range(len(vals)):
-    plt.plot(x[i], z[i], label=f"$vz_0: {vals[i][1]}$, $v_0: {vals[i][0]}$")
+    plt.plot(x[i], z[i], label=f"$vz_0: {vals[i][1]}$, $z_0: {vals[i][0]}$")
 plt.axvline(0, c="gray")
 ax_line = lambda x: -x/np.tan(ecliptic_tilt)  # ecliptic axis
 plt.plot([-10, 10], [ax_line(-10), ax_line(10)], linestyle="--", color="gray")  # ecliptic axis
@@ -145,12 +154,16 @@ plt.ylabel("z")
 plt.legend()
 plt.xlim(-20, 12)
 plt.ylim(-20, 14)
-plt.show()
+if SAVE_FIG:
+    plt.savefig("trajectory_xz_plane.pdf")
+    plt.clf()
+else:
+    plt.show()
 
 # xy plane #####
 plt.title("XY plane")
 for i in range(len(vals)):
-    plt.plot(x[i], y[i], label=f"$vz_0: {vals[i][1]}$, $v_0: {vals[i][0]}$")
+    plt.plot(x[i], y[i], label=f"$vz_0: {vals[i][1]}$, $z_0: {vals[i][0]}$")
 plt.scatter([0], [0], s=3000, zorder=10)  # earth
 
 plt.axhline(color="gray")
@@ -160,7 +173,11 @@ plt.ylabel("y")
 plt.legend()
 plt.xlim(-20, 12)
 plt.ylim(-20, 14)
-plt.show()
+if SAVE_FIG:
+    plt.savefig("trajectory_xy_plane.pdf")
+    plt.clf()
+else:
+    plt.show()
 
 ## Energy validation
 x, y, z, vx, vy, vz = get_path(5, 0.4, return_vel=True)
@@ -169,4 +186,8 @@ plt.title("Energy")
 plt.plot(100*(E-E[0])/E[0])
 plt.ylabel("Relative error [%]")
 plt.xlabel("Step number")
-plt.show()
+if SAVE_FIG:
+    plt.savefig("energy.pdf")
+    plt.clf()
+else:
+    plt.show()
