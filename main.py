@@ -26,7 +26,7 @@ which is what we could excpect.
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from scipy.integrate import RK45
+from scipy.integrate import RK45, DOP853, Radau, LSODA
 
 plt.style.use('bmh')
 
@@ -37,6 +37,7 @@ newParams = {'figure.figsize'  : (12, 6),  # Figure size
              'axes.linewidth'  : 2,        # width of the figure box lines
              'lines.linewidth' : 1,        # width of the plotted lines
              'savefig.dpi'     : 200,      # resolution of a figured saved using plt.savefig(filename)
+             'savefig.bbox' : "tight",
              'ytick.labelsize' : 11,       # fontsize of tick labels on y axis
              'xtick.labelsize' : 11,       # fontsize of tick labels on x axis
              'legend.fontsize' : 12,       # fontsize of labels in legend
@@ -46,21 +47,29 @@ plt.rcParams.update(newParams) # Set new plotting parameters
 
 ########## Setup ##########
 # Meta setup
+FIG_DIR = "media/"
+MAX_STEP = 100000
+ODE_method = Radau
 PLOT_FIELD = True
 SAVE_FIG = True
-FIG_DIR = "media/"
+SET_ASPECT = True
+xlim = (-40, 10)
+xz_ylim = (-25, 15)
+xy_ylim = (-4, 15)
 
 # Physics setup
-END_TIME = 10
+B_0 = 6E4  # q*B_0*Rj^3*V0
+END_TIME = 400
+X0 = -30  # Starting x-position
 ecliptic_tilt = 23.4  # degrees
 ecliptic_tilt = np.radians(ecliptic_tilt)
 
 # Pairs of initial position and initial velocity to check (z0, vz0)
 vals = [
     (7, 0.4),
-    (5, 0.4),
     (0, 1),
     (-4, 0.4),
+    (-15, 1),
 ]
 
 
@@ -70,7 +79,6 @@ vals = [
 def B(x, y, z):
     """B-field in r=(x,y,z)"""
     r = np.maximum(np.sqrt(x**2 + y**2 + z**2), 0.01)  # Avoid singularity
-    B_0 = 100  # q*B_0*Rj^3*V0
 
     m_x = np.sin(ecliptic_tilt)
     m_y = 0
@@ -91,14 +99,14 @@ def acceleration(t, y):
     return np.concatenate((y[3:], cross))
 
 
-def get_path(x=-20, y=0, z=0, vx=0.1, vy=0, vz=0,
-             max_step=10000, return_iter=False, return_vel=False):
+def get_path(x=X0, y=0, z=0, vx=0.1, vy=0, vz=0,
+             max_step=MAX_STEP, return_iter=False, return_vel=False):
     # Allocate memory for maximum possible steps
     y_list = np.empty([max_step, 6])
     t_list = np.empty(max_step)
     t_list[0] = 0
     y_list[0] = [x, y, z, vx, vy, vz]
-    solver = RK45(acceleration, 0, y_list[0], END_TIME, max_step=max_step)
+    solver = ODE_method(acceleration, 0, y_list[0], END_TIME, max_step=max_step)
     i = 1
 
     while solver.status == "running":
@@ -124,6 +132,12 @@ def get_path(x=-20, y=0, z=0, vx=0.1, vy=0, vz=0,
 
     return x, y, z,
 
+
+def plot_earth_axis(tilt=ecliptic_tilt, x1=-10, x2=10):
+    ax_line = lambda x: -x/np.tan(tilt)  # ecliptic axis slope
+    plt.plot([x1, x2], [ax_line(x1), ax_line(x2)], linestyle="--", color="gray")
+
+
 def plot_field(x1, x2, Bx1, Bx2, name, savefig=False):
     """Plots field in the x1x2-plane.
     Parameters:
@@ -134,9 +148,13 @@ def plot_field(x1, x2, Bx1, Bx2, name, savefig=False):
        name : string, two letter name of plane, f.eks. "xy"
     """
     plt.streamplot(x1, x2, Bx1, Bx2)
-    plt.title(f"${name}$-plane")
-    plt.xlabel(f"${name[0]}$")
-    plt.ylabel(f"${name[1]}$")
+    earth = plt.Circle((0,0), radius=1)
+    plt.gca().add_artist(earth)
+#    plt.title(f"${name}$-plane")
+    plt.xlabel(f"${name[0]} [R_J]$")
+    plt.ylabel(f"${name[1]} [R_J]$")
+    if SET_ASPECT:
+        plt.gca().set_aspect('equal', adjustable='box')
     if SAVE_FIG:
         plt.savefig(f"{FIG_DIR}B_field_{name}_plane.pdf")
         plt.clf()
@@ -179,10 +197,14 @@ if PLOT_FIELD:
     # xz plane
     xx, zz = np.meshgrid(x, z)
     Bx, By, Bz = B(xx, np.zeros_like(xx), zz)
+    plot_earth_axis()
+    plt.ylim(-10, 10)
     plot_field(xx, zz, Bx, Bz, "xz", savefig=SAVE_FIG)
+
     # xy plane
     xx, yy = np.meshgrid(x, y)
     Bx, By, Bz = B(xx, yy, np.zeros_like(xx))
+    plt.axhline(y=0, color="gray", linestyle="dashed")
     plot_field(xx, yy, Bx, By, "xy", savefig=SAVE_FIG)
 
 # Plot trajectories
@@ -190,18 +212,20 @@ if PLOT_FIELD:
 ############
 # xz plane #
 ############
-plt.title("XZ plane")
-plt.gca().set_aspect('equal', adjustable='box')
-plt.xlabel("x")
-plt.ylabel("z")
-plt.xlim(-20, 12)
-plt.ylim(-20, 14)
+#plt.title("XZ plane")
+if SET_ASPECT:
+    plt.gca().set_aspect('equal', adjustable='box')
+plt.xlabel("$x [R_J]$")
+plt.ylabel("$z [R_J]$")
+plt.xlim(*xlim)
+plt.ylim(*xz_ylim)
 
 for i in range(len(vals)):  # Plot each path
     plt.plot(path_x[i], path_z[i], label=_get_label(i))
 plt.axvline(0, c="gray")  # Plot x-axis (axis of travel)
-ax_line = lambda x: -x/np.tan(ecliptic_tilt)  # ecliptic axis slope
-plt.plot([-10, 10], [ax_line(-10), ax_line(10)], linestyle="--", color="gray")
+#ax_line = lambda x: -x/np.tan(ecliptic_tilt)  # ecliptic axis slope
+#plt.plot([-10, 10], [ax_line(-10), ax_line(10)], linestyle="--", color="gray")
+plot_earth_axis()
 earth = plt.Circle((0,0), radius=1)
 plt.gca().add_artist(earth)
 
@@ -210,9 +234,9 @@ xx, zz = np.meshgrid(x, z)
 Bx, By, Bz = B(xx, np.zeros_like(xx), zz)
 stream = plt.streamplot(xx, zz, Bx, Bz, color="gray", linewidth=0.5)
 
-plt.legend()
+plt.legend(loc="lower right")
 if SAVE_FIG:
-    plt.savefig(f"{FIG_DIR}trajectory_xz_plane.pdf")
+    plt.savefig(f"{FIG_DIR}trajectory_xz_plane.pdf") #, bbox_inches="tight")
     plt.clf()
 else:
     plt.show()
@@ -220,12 +244,13 @@ else:
 ############
 # xy plane #
 ############
-plt.title("XY plane")
-plt.gca().set_aspect('equal', adjustable='box')
-plt.xlabel("x")
-plt.ylabel("y")
-plt.xlim(-20, 12)
-plt.ylim(-20, 14)
+#plt.title("XY plane")
+if SET_ASPECT:
+    plt.gca().set_aspect('equal', adjustable='box')
+plt.xlabel("$x [R_J]$")
+plt.ylabel("$y [R_J]$")
+plt.xlim(*xlim)
+plt.ylim(*xy_ylim)
 
 for i in range(len(vals)):  # Plot each path
     plt.plot(path_x[i], path_y[i], label=_get_label(i))
@@ -244,7 +269,7 @@ else:
 #####################
 # Energy validation #
 #####################
-plt.title("Energy")
+#plt.title("Energy")
 plt.ylabel("Relative error [%]")
 plt.xlabel("Step number")
 for i in range(len(vals)):
